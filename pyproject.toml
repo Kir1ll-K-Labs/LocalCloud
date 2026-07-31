@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "LocalCloud"
+version = "0.1.0"
+description = "Библиотека для обмена данными в локальной сети"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+  {name = "Кирилл", email = "Kuz27kir03an07@gmail.com"}
+]
+dependencies = [
+  "fastapi>=0.141.1",
+  "uvicorn>=0.52.0",
+  "pydantic>=2.13.4",
+  "aiohttp>=3.14.3",
+  "pathlib"
+]
