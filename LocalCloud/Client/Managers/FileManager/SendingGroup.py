@@ -8,9 +8,9 @@ class SendingGroup:
         self.addresses=[]
         self.main_nodes=[]
 
-    async def add_address(self,address:str,check_addres=True):
+    async def add_address(self,address:str,check_address=True):
         if not address in self.addresses:
-            if check_addres:
+            if check_address:
                 await SenderClient.sent_echo(addres=address)
             self.addresses.append(address)
     async def remove_address(self,address:str):

@@ -1,4 +1,6 @@
 import asyncio
+import json
+import secrets
 import threading
 import socket
 import urllib.parse
@@ -8,29 +10,45 @@ import uvicorn
 from fastapi import Response, UploadFile
 from fastapi.params import File
 import LocalCloud.Client.Managers.FileManager.Exceptions as api_exc
+import LocalCloud.Client.Managers.FileManager.Types as api_types
+import LocalCloud.Client.Managers.EventsManager.Types as events_types
+import LocalCloud.Client.Managers.FunctionsManager.Types as function_typs
+from LocalCloud.CallBackFilter import CallBackClass, CallBackFilter
+from LocalCloud.Client.Managers.FileManager.Types import FileReceiveClass
+from LocalCloud.Client.Server.FolderTokens import FolderTokens
+
 
 class Server:
     def __init__(self):
         pass
     @classmethod
-    def load_json(cls,json):
+    def add_address_to_whitelist(cls,address:str):
+        cls.white_list.add(address)
+    @classmethod
+    def remove_address_from_whitelist(cls,address):
+        if address in cls.white_list:
+            cls.white_list.remove(address)
+            return True
+        return False
+    @classmethod
+    def _load_json(cls,json):
         if "white_list" in json:
             white_list_set=set(json["white_list"])
             cls.white_list=white_list_set
 
         if "black_list" in json:
             black_list_set = set(json["black_list"])
-            cls.black_list = black_list_set
+            cls._black_list = black_list_set
 
         if "save_path" in json:
-            cls.default_save_path=json["save_path"]
+            cls._default_save_path=json["save_path"]
 
     @classmethod
-    async def get_json(cls):
+    async def _get_json(cls):
         return {
             "white_list":list(cls.white_list),
-            "black_list":list(cls.black_list),
-            "save_path":cls.default_save_path
+            "black_list":list(cls._black_list),
+            "save_path":cls._default_save_path
         }
 
     @classmethod
@@ -42,68 +60,125 @@ class Server:
 
 
     @classmethod
-    def __init__class__(cls):
+    def init(cls):
+        if not hasattr(cls,"_variables_storage"):
+            cls._variables_storage={}
         if not hasattr(cls,"white_list"):
             cls.white_list = set()
-        if not hasattr(cls,"black_list"):
-
-            cls.black_list = set()
-        if not hasattr(cls,"default_save_path"):
-            cls.default_save_path = ""
-        if not hasattr(cls,"on_file_receive_callbacks"):
-            cls.on_file_receive_callbacks=[]
-        if not hasattr(cls,"on_folder_receive_callbacks"):
-            cls.on_folder_receive_callbacks=[]
-        if not hasattr(cls, "on_file_receive_error_callbacks"):
-            cls.on_file_receive_error_callbacks = []
-        if not hasattr(cls, "on_folder_receive_error_callbacks"):
-            cls.on_folder_receive_error_callbacks = []
-        cls.started=False
+        if not hasattr(cls,"_default_save_path"):
+            cls._default_save_path = ""
+        if not hasattr(cls,"_on_file_receive_callbacks"):
+            cls._on_file_receive_callbacks:[CallBackClass]=[]
+        if not hasattr(cls,"_on_folder_receive_callbacks"):
+            cls._on_folder_receive_callbacks:[CallBackClass]=[]
+        if not hasattr(cls,"_on_event_receive_callbacks"):
+            cls._on_event_receive_callbacks:[CallBackClass]=[]
+        if not hasattr(cls,"_on_function_receive_callbacks"):
+            cls._on_function_receive_callbacks:[CallBackClass]=[]
+        cls._started=False
+        cls.current_host = socket.gethostbyname(socket.gethostname())
+        cls.current_port = 12123
     @classmethod
-    def start_server(cls):
+    def _start_server(cls):
         if hasattr(cls,"server_instance") and cls.server_instance!=None:
             return
-        cls.started=True
+        cls.server_instance: uvicorn.Server | None = None
+        cls._started=True
         cls.fast_api_server=fastapi.FastAPI()
 
 
         cls.white_list.add(socket.gethostbyname(socket.gethostname()))
+        cls.white_list.add("127.0.0.1")
+        cls.white_list.add("localhost")
 
-
-        cls.current_host=socket.gethostbyname(socket.gethostname())
-        cls.current_port=12123
-        cls.server_instance:uvicorn.Server|None=None
+        @cls.fast_api_server.get("/variables/get")
+        async def variable_get(request:fastapi.Request):
+            client_host = request.client.host
+            if not client_host in cls.white_list:
+                return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
+            key = urllib.parse.unquote(request.headers.get("key"), encoding="utf-8")
+            if key in cls._variables_storage:
+                value = cls._variables_storage[key]
+                if callable(value):
+                    value=value()
+                try:
+                    value=json.dumps(value)
+                except TypeError:
+                    value=json.dumps(str(value))
+                return Response(status_code=200,content=value)
+            else:
+                return Response(status_code=404)
+        @cls.fast_api_server.get("/function/get")
+        async def functions_get(request:fastapi.Request):
+            client_host = request.client.host
+            if not client_host in cls.white_list:
+                return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
+            function_name = urllib.parse.unquote(request.headers.get("function_name"), encoding="utf-8")
+            function_data = urllib.parse.unquote(request.headers.get("function_data"), encoding="utf-8")
+            received_function = function_typs.ReceivedFunction(address=client_host, function_name=function_name,function_data=function_data)
+            availabled_callbacks = await CallBackFilter.get_available_callbacks(
+                callbacks_list=cls._on_function_receive_callbacks, object=received_function)
+            if len(availabled_callbacks)==0:
+                return Response(status_code=404,content="На целевом адресе не найдено обработчиков функции")
+            callback=availabled_callbacks[0]
+            function_responce=await callback.callback_function(received_function)
+            return Response(status_code=200,content=json.dumps(function_responce))
+        @cls.fast_api_server.get("/events/get")
+        async def events_get(request: fastapi.Request):
+            client_host = request.client.host
+            if not client_host in cls.white_list:
+                return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
+            event_name = urllib.parse.unquote(request.headers.get("event_name"), encoding="utf-8")
+            event_data = urllib.parse.unquote(request.headers.get("event_data"), encoding="utf-8")
+            received_event=events_types.ReceivedEvent(address=client_host,event_name=event_name,event_data=event_data)
+            availabled_callbacks=await CallBackFilter.get_available_callbacks(callbacks_list=cls._on_event_receive_callbacks,object=received_event)
+            if len(availabled_callbacks)==0:
+                return Response(status_code=404,content="Событие не было получено на целевом адресе")
+            await CallBackFilter.send_object_to_callbacks(callbacks_list=availabled_callbacks,object=received_event)
 
         @cls.fast_api_server.get("/create_folder")
         async def create_folder(request: fastapi.Request):
-            if cls.default_save_path=="":
-                folder_receive_class_error=api_exc.FolderReceiveClassError()
-                folder_receive_class_error.status_code=500
-                await cls.send_callbacks(cls.on_folder_receive_error_callbacks,data=folder_receive_class_error)
-                return Response(status_code=500,content="Ошибка на сервере")
             client_host = request.client.host
             if not client_host in cls.white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
             relative_path = urllib.parse.unquote(request.headers.get("relative_path"), encoding="utf-8")
             folder_name=urllib.parse.unquote(request.headers.get("folder_name"), encoding="utf-8")
-            folder_path=cls.default_save_path
             relative_path=eval(relative_path)
-            for path in relative_path:
-                folder_path=os.path.join(folder_path,path)
-            folder_path=os.path.join(folder_path,folder_name)
             try:
-                os.makedirs(folder_path)
-                folder_receive_class=api_exc.FolderReceiveClass()
-                folder_receive_class.folder_name=folder_name
-                folder_receive_class.adres=client_host
-                folder_receive_class.relative_path=relative_path
-                folder_receive_class.status_code=200
-                await cls.send_callbacks(list=cls.on_folder_receive_callbacks,data=folder_receive_class)
-                return Response(status_code=200)
+                if len(relative_path)==0:
+                    folder_token=secrets.token_hex(10)
+                    folder_receive_class = api_types.FolderReceiveClass(address=client_host,folder_token=folder_token,folder_name=folder_name,folder_size=urllib.parse.unquote(request.headers.get("folder_size"), encoding="utf-8"))
+                    availabled_callbacks = await CallBackFilter.get_available_callbacks(callbacks_list=cls._on_folder_receive_callbacks, object=folder_receive_class)
+                    if len(availabled_callbacks) == 0:
+                        return Response(status_code=404, content="Папка не была получена на целевом адресе")
+                    await CallBackFilter.send_object_to_callbacks(callbacks_list=availabled_callbacks,object=folder_receive_class)
+                    folder_paths = FolderTokens.get_paths_by_token(folder_token)
+                    print(folder_paths)
+                    if len(folder_paths) == 0:
+                        return Response(status_code=404, content="Папка не была получена на целевом адресе")
+                    for base_path in folder_paths:
+                        folder_path = os.path.join(base_path, folder_name)
+                        try:
+                            os.makedirs(folder_path)
+                        except FileExistsError:
+                            pass
+                    return Response(status_code=200,content=json.dumps({"folder_token":folder_token}))
+                else:
+                    folder_token=urllib.parse.unquote(request.headers.get("folder_token"))
+                    folder_paths=FolderTokens.get_paths_by_token(folder_token)
+                    for base_path in folder_paths:
+                        folder_path=base_path
+                        for path in relative_path:
+                            folder_path = os.path.join(folder_path, path)
+                        folder_path = os.path.join(folder_path, folder_name)
+
+                        try:
+                            os.makedirs(folder_path)
+                        except FileExistsError:
+                            pass
+                    return Response(status_code=200,content='{}')
             except FileExistsError:
-                return Response(status_code=200)
-            finally:
-                return Response(status_code=200)
+                pass
 
 
 
@@ -112,38 +187,34 @@ class Server:
             client_host = request.client.host
             if not client_host in cls.white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
-            if cls.default_save_path=="":
-                file_receive_class_error=api_exc.FileReceiveClassError()
-                file_receive_class_error.adres=request.client.host
-                file_receive_class_error.file_name=file.filename
-                file_receive_class_error.status_code=500
-                await cls.send_callbacks(list=cls.on_file_receive_error_callbacks,data=file_receive_class_error)
-                return Response(status_code=500,content="Ошибка на сервере")
             content=await file.read()
             relative_path = urllib.parse.unquote(request.headers.get("relative_path"), encoding="utf-8")
-
-            folder_path = cls.default_save_path
+            file_name=urllib.parse.unquote(file.filename)
             relative_path = eval(relative_path)
-            for path in relative_path:
-                folder_path = os.path.join(folder_path, path)
-            folder_path = os.path.join(folder_path, file.filename)
-            with open(folder_path,"wb") as opened_file:
-                try:
-                    opened_file.write(content)
-                    file_receive_class=api_exc.FileReceiveClass()
-                    file_receive_class.adres=client_host
-                    file_receive_class.file_name=file.filename
-                    file_receive_class.relative_path=relative_path
-                    file_receive_class.status_code=200
-                    await cls.send_callbacks(list=cls.on_file_receive_callbacks,data=file_receive_class)
-                except OSError as error:
-                    file_receive_class_error=api_exc.FileReceiveClassError()
-                    file_receive_class_error.adres=client_host
-                    file_receive_class_error.file_name=file.filename
-                    file_receive_class_error.status_code=500
-                    file_receive_class_error.relative_path=relative_path
-                    await cls.send_callbacks(list=cls.on_file_receive_error_callbacks,data=file_receive_class_error)
-                    return Response(status_code=500,content="На диске целевого устройства закончилось место")
+            if "folder_token" in request.headers:
+                folder_token = urllib.parse.unquote(request.headers.get("folder_token"), encoding="utf-8")
+                folders_paths=FolderTokens.get_paths_by_token(token=folder_token)
+                for folder_path in folders_paths:
+                    for path in relative_path:
+                        folder_path = os.path.join(folder_path, path)
+                    folder_path = os.path.join(folder_path, file_name)
+                    with open(folder_path,"wb") as opened_file:
+                        try:
+                            opened_file.write(content)
+                        except OSError as error:
+                            return Response(status_code=500,content="На диске целевого устройства закончилось место")
+                return Response(status_code=200,content="{}")
+            else:
+                file_receive_class=FileReceiveClass()
+                file_receive_class.file_name=file_name
+                file_receive_class.address=client_host
+                file_receive_class.file_content=content
+                availabled_callbacks = await CallBackFilter.get_available_callbacks(
+                    callbacks_list=cls._on_file_receive_callbacks, object=file_receive_class)
+                if len(availabled_callbacks)==0:
+                    return Response(status_code=404,content="Целевой Клиент не принял этот файл")
+                await CallBackFilter.send_object_to_callbacks(callbacks_list=availabled_callbacks,
+                                                              object=file_receive_class)
         """
         async def share_page(page:Page):
             page.title="input.txt"
@@ -155,7 +226,7 @@ class Server:
             client_host=request.client.host
             if not client_host in cls.white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN,content=f"Ваш адрес ({client_host}) заблокирован на {cls.current_host}")
-            if cls.default_save_path=="":
+            if cls._default_save_path=="":
                 return Response(status_code=fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR,content=f"На сервере произошла ошибка")
             return Response(status_code=fastapi.status.HTTP_200_OK)
 
@@ -163,7 +234,7 @@ class Server:
 
 
         def start_inner():
-            cls.server_instance=uvicorn.Server(config=uvicorn.Config(app=cls.fast_api_server,host="0.0.0.0",port=cls.current_port))
+            cls.server_instance=uvicorn.Server(config=uvicorn.Config(app=cls.fast_api_server,host="0.0.0.0",port=cls.current_port,access_log=True))
             cls.server_instance.run()
 
         threading.Thread(target=start_inner).start()

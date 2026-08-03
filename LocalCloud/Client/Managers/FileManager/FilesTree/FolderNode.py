@@ -6,6 +6,7 @@ class FolderNode(TreeNode):
         self.file_name:str=file_name
         self.total_files_count=0
         self.file_path:str=file_path
+        self.file_size=0
         self.childs:[TreeNode]=[]
     async def add_child(self,node:TreeNode):
         self.childs.append(node)
