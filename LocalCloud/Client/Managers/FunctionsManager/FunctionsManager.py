@@ -1,6 +1,7 @@
+from LocalCloud.CallBackFilter.Handlers import Handlers
+from LocalCloud.Client.Server import Server
 from LocalCloud.CallBackFilter import CallBackClass
-from LocalCloud.Client.Managers.FunctionsManager.Types.InvokingFunction import InvokingFunction
-from LocalCloud.Client.Server.Server import Server
+from LocalCloud.Client.Managers.FunctionsManager.Types.FunctionResponce import FunctionResponce
 from LocalCloud.Client.Managers.FunctionsManager.SenderClient import SenderClient
 
 class FunctionsManager:
@@ -14,15 +15,15 @@ class FunctionsManager:
             return await self.function(*args,**kwargs)
 
         async def invoke_on_address(self,address,*args,**kwargs):
-            invoking_f=InvokingFunction(address=address,function_name=self.function_name,function_data={
-            "args": args,
-            "kwargs": kwargs
-        })
-            return await SenderClient.send_function_class(invoking_f)
+            return await SenderClient.send_function(address=address,*args,**kwargs)
         def __getattr__(self, item):
             return self.function.__getattr__(item)
     def __init__(self):
         pass
+
+    @classmethod
+    def get_handlers(cls) -> Handlers:
+        return Handlers(handlers_list=Server._on_function_receive_callbacks)
 
     @classmethod
     def init(cls):
@@ -43,10 +44,5 @@ class FunctionsManager:
 
         return decorator
     @classmethod
-    async def invoke(cls,invoking_function:InvokingFunction,*args,**kwargs):
-        function_data = {
-            "args": args,
-            "kwargs": kwargs
-        }
-        invoking_function.function_data = function_data
-        return await SenderClient.send_function_class(invoking_function)
+    async def invoke(cls,_address_,*args,**kwargs)->FunctionResponce:
+        return await SenderClient.send_function(_address_,*args,**kwargs)

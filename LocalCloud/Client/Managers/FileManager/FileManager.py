@@ -1,9 +1,12 @@
 from LocalCloud.CallBackFilter import CallBackClass
-from .SendingGroup import SendingGroup
+from LocalCloud.CallBackFilter.Handlers import Handlers
 from LocalCloud.Client.Server import Server
 from .SenderClient import SenderClient
 from .ClientManager import ClientManager
+from .SendingGroup import SendingGroup
 from ...Server.FolderTokens import FolderTokens
+from .Types.Folder import Folder
+from .Types.File import File
 
 
 class FileManager:
@@ -14,16 +17,28 @@ class FileManager:
         Server.init()
         ClientManager.init()
 
-
-    @classmethod
-    async def create_sending_group(cls) -> SendingGroup:
-        senting_group = SendingGroup()
-        return senting_group
-
     @classmethod
     async def set_default_save_path(cls, path: str):
         Server.default_save_path = path
 
+    @classmethod
+    def get_file_handlers(cls) -> Handlers:
+        return Handlers(handlers_list=Server._on_file_receive_callbacks)
+
+    @classmethod
+    def get_folder_handlers(cls) -> Handlers:
+        return Handlers(handlers_list=Server._on_folder_receive_callbacks)
+
+    @classmethod
+    async def send(cls,addresses,*args:[File|Folder]):
+        sending_group = SendingGroup()
+        sending_group.addresses=addresses
+        for element in args:
+            if isinstance(element,File):
+                await sending_group.add_files(*[element.path_to_file])
+            elif isinstance(element,Folder):
+                await sending_group.add_folder(element.path_to_folder)
+        await sending_group.start_sending()
     @classmethod
     def init(cls):
         Server.init()
@@ -41,9 +56,7 @@ class FileManager:
     def on_file_receive(cls, **kwargs):
         def decorator(function):
             call_back_class = CallBackClass(function=function, kwargs=kwargs)
-            if not hasattr(Server, "on_file_receive_callbacks"):
-                Server.on_file_receive_callbacks = []
-            Server.on_file_receive_callbacks.append(call_back_class)
+            Server._on_file_receive_callbacks.append(call_back_class)
             return function
         return decorator
 

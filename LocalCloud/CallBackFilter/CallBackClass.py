@@ -7,7 +7,7 @@ class CallBackClass:
         weight=0
         for key,value in self.kwargs.items():
             cur_val = getattr(object,key,None)
-            if cur_val is None and not hasattr(object,key):
+            if cur_val is None or not hasattr(object,key):
                 return -1
             if callable(value):
                 if value(cur_val):

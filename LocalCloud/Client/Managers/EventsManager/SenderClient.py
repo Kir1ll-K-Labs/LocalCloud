@@ -3,18 +3,15 @@ import urllib.parse
 
 import aiohttp
 
-from LocalCloud.Client.Managers.EventsManager.Types import SendingEvent
-
 
 class SenderClient:
     def __init__(self):
         pass
 
     @classmethod
-    async def send_event_class(cls, event_class:SendingEvent):
+    async def send_event(cls, addresses,event_data):
         headers = {
-            "event_name": urllib.parse.quote(str(event_class.event_name), encoding="utf-8"),
-            "event_data": urllib.parse.quote(str(event_class.event_data), encoding="utf-8")
+            "event_data": urllib.parse.quote(str(event_data), encoding="utf-8")
         }
         async with aiohttp.ClientSession() as session:
             tasks=[]
@@ -24,7 +21,7 @@ class SenderClient:
                 async with session.get(url, timeout=3, headers=headers) as response:
                     if response.status==404:
                         print(str(await response.content.read(),encoding="utf-8"))
-            for address in event_class.addresses:
+            for address in addresses:
                 tasks.append(
                     send_data(address)
                 )

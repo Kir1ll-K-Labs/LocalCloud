@@ -3,7 +3,7 @@ import json
 import urllib.parse
 
 import aiohttp
-from LocalCloud.Client.Managers.FunctionsManager.Types import InvokingFunction
+from LocalCloud.Client.Managers.FunctionsManager.Types import FunctionResponce
 
 
 class SenderClient:

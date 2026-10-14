@@ -2,12 +2,13 @@ import json
 import ast
 
 class ReceivedEvent:
-    def __init__(self,address:str,event_name,event_data):
+    def __init__(self,address:str,event_data):
         self.address=address
-        self.event_name=event_name
         self.__event_data=ast.literal_eval(event_data)
 
     def __getattr__(self, item):
+        if item=="event_data":
+            return self.__event_data["event_data"]
         if item=="args":
             return self.__event_data.get("args",())
         elif item=="kwargs":

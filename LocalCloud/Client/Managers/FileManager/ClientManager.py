@@ -39,7 +39,6 @@ class ClientManager:
                                             file_path=os.path.join(file_path, child.file_name), file_node=child,folder_token=folder_token)
         except api_exc.FolderSentError as error:
             error.folder_node=folder_node
-            await SenderClient.send_callbacks(list=SenderClient.on_folder_sent_error_callbacks,data=error)
 
     @classmethod
     async def sent_file_node(cls,addreses:[str],file_path:str,relative_path,file_node:FileNode,folder_token=None):
@@ -47,7 +46,7 @@ class ClientManager:
             await SenderClient._sent_file(addreses=addreses,file_path=file_path,relative_path=relative_path,folder_token=folder_token)
         except api_exc.FileSentClassError as error:
             error.file_absolute_path=file_path
-            await SenderClient.send_callbacks(list=SenderClient.on_file_sent_error_callbacks,data=error)
+            await SenderClient.send_callbacks(list=SenderClient._on_file_sent_error_callbacks,data=error)
 
     @classmethod
     async def sent_main_node(cls,addreses:str,main_node:MainNode):

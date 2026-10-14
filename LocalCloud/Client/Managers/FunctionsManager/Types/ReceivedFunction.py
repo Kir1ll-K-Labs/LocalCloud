@@ -1,8 +1,7 @@
 import ast
 class ReceivedFunction:
-    def __init__(self, address: str, function_name, function_data):
+    def __init__(self, address: str, function_data):
         self.address = address
-        self.function_name = function_name
         self.__function_data = ast.literal_eval(function_data)
 
     def __getattr__(self, item):

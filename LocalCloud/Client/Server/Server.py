@@ -17,28 +17,38 @@ from LocalCloud.CallBackFilter import CallBackClass, CallBackFilter
 from LocalCloud.Client.Managers.FileManager.Types import FileReceiveClass
 from LocalCloud.Client.Server.FolderTokens import FolderTokens
 
+class ServerMeta(type):
+    @property
+    def current_host(cls):
+        return cls._c_host
+    @property
+    def current_port(cls):
+        return cls._c_port
+    @property
+    def white_list(cls):
+        return cls._white_list
 
-class Server:
+
+class Server(metaclass=ServerMeta):
+    _c_host=""
+    _c_port=12
+    _white_list=set()
     def __init__(self):
         pass
     @classmethod
     def add_address_to_whitelist(cls,address:str):
-        cls.white_list.add(address)
+        cls._white_list.add(address)
     @classmethod
     def remove_address_from_whitelist(cls,address):
-        if address in cls.white_list:
-            cls.white_list.remove(address)
+        if address in cls._white_list:
+            cls._white_list.remove(address)
             return True
         return False
     @classmethod
     def _load_json(cls,json):
         if "white_list" in json:
             white_list_set=set(json["white_list"])
-            cls.white_list=white_list_set
-
-        if "black_list" in json:
-            black_list_set = set(json["black_list"])
-            cls._black_list = black_list_set
+            cls._white_list=white_list_set
 
         if "save_path" in json:
             cls._default_save_path=json["save_path"]
@@ -47,12 +57,11 @@ class Server:
     async def _get_json(cls):
         return {
             "white_list":list(cls.white_list),
-            "black_list":list(cls._black_list),
             "save_path":cls._default_save_path
         }
 
     @classmethod
-    async def send_callbacks(cls, list, data):
+    async def __send_callbacks(cls, list, data):
         tasks = []
         for coroutine in list:
             tasks.append(coroutine(data))
@@ -63,8 +72,8 @@ class Server:
     def init(cls):
         if not hasattr(cls,"_variables_storage"):
             cls._variables_storage={}
-        if not hasattr(cls,"white_list"):
-            cls.white_list = set()
+        if not hasattr(cls,"_white_list"):
+            cls._white_list = set()
         if not hasattr(cls,"_default_save_path"):
             cls._default_save_path = ""
         if not hasattr(cls,"_on_file_receive_callbacks"):
@@ -76,8 +85,9 @@ class Server:
         if not hasattr(cls,"_on_function_receive_callbacks"):
             cls._on_function_receive_callbacks:[CallBackClass]=[]
         cls._started=False
-        cls.current_host = socket.gethostbyname(socket.gethostname())
-        cls.current_port = 12123
+        cls._c_host = socket.gethostbyname(socket.gethostname())
+        cls._c_port = 12123
+        cls._start_server()
     @classmethod
     def _start_server(cls):
         if hasattr(cls,"server_instance") and cls.server_instance!=None:
@@ -87,14 +97,14 @@ class Server:
         cls.fast_api_server=fastapi.FastAPI()
 
 
-        cls.white_list.add(socket.gethostbyname(socket.gethostname()))
-        cls.white_list.add("127.0.0.1")
-        cls.white_list.add("localhost")
+        cls._white_list.add(socket.gethostbyname(socket.gethostname()))
+        cls._white_list.add("127.0.0.1")
+        cls._white_list.add("localhost")
 
         @cls.fast_api_server.get("/variables/get")
         async def variable_get(request:fastapi.Request):
             client_host = request.client.host
-            if not client_host in cls.white_list:
+            if not client_host in cls._white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
             key = urllib.parse.unquote(request.headers.get("key"), encoding="utf-8")
             if key in cls._variables_storage:
@@ -111,11 +121,10 @@ class Server:
         @cls.fast_api_server.get("/function/get")
         async def functions_get(request:fastapi.Request):
             client_host = request.client.host
-            if not client_host in cls.white_list:
+            if not client_host in cls._white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
-            function_name = urllib.parse.unquote(request.headers.get("function_name"), encoding="utf-8")
             function_data = urllib.parse.unquote(request.headers.get("function_data"), encoding="utf-8")
-            received_function = function_typs.ReceivedFunction(address=client_host, function_name=function_name,function_data=function_data)
+            received_function = function_typs.ReceivedFunction(address=client_host,function_data=function_data)
             availabled_callbacks = await CallBackFilter.get_available_callbacks(
                 callbacks_list=cls._on_function_receive_callbacks, object=received_function)
             if len(availabled_callbacks)==0:
@@ -126,11 +135,10 @@ class Server:
         @cls.fast_api_server.get("/events/get")
         async def events_get(request: fastapi.Request):
             client_host = request.client.host
-            if not client_host in cls.white_list:
+            if not client_host in cls._white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
-            event_name = urllib.parse.unquote(request.headers.get("event_name"), encoding="utf-8")
             event_data = urllib.parse.unquote(request.headers.get("event_data"), encoding="utf-8")
-            received_event=events_types.ReceivedEvent(address=client_host,event_name=event_name,event_data=event_data)
+            received_event=events_types.ReceivedEvent(address=client_host,event_data=event_data)
             availabled_callbacks=await CallBackFilter.get_available_callbacks(callbacks_list=cls._on_event_receive_callbacks,object=received_event)
             if len(availabled_callbacks)==0:
                 return Response(status_code=404,content="Событие не было получено на целевом адресе")
@@ -139,7 +147,7 @@ class Server:
         @cls.fast_api_server.get("/create_folder")
         async def create_folder(request: fastapi.Request):
             client_host = request.client.host
-            if not client_host in cls.white_list:
+            if not client_host in cls._white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
             relative_path = urllib.parse.unquote(request.headers.get("relative_path"), encoding="utf-8")
             folder_name=urllib.parse.unquote(request.headers.get("folder_name"), encoding="utf-8")
@@ -185,7 +193,7 @@ class Server:
         @cls.fast_api_server.post("/sent_file")
         async def on_sent_file(request: fastapi.Request, file: UploadFile = File(...)):
             client_host = request.client.host
-            if not client_host in cls.white_list:
+            if not client_host in cls._white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN)
             content=await file.read()
             relative_path = urllib.parse.unquote(request.headers.get("relative_path"), encoding="utf-8")
@@ -224,7 +232,7 @@ class Server:
         @cls.fast_api_server.get("/echo")
         async def on_echo(request:fastapi.Request):
             client_host=request.client.host
-            if not client_host in cls.white_list:
+            if not client_host in cls._white_list:
                 return Response(status_code=fastapi.status.HTTP_403_FORBIDDEN,content=f"Ваш адрес ({client_host}) заблокирован на {cls.current_host}")
             if cls._default_save_path=="":
                 return Response(status_code=fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR,content=f"На сервере произошла ошибка")
@@ -240,7 +248,7 @@ class Server:
         threading.Thread(target=start_inner).start()
     @classmethod
     def stop_server(cls):
-        def stop_inner():
-            cls.server_instance.shutdown()
+        async def stop_inner():
+            await  cls.server_instance.shutdown()
             cls.server_instance=None
-        threading.Thread(target=stop_inner).start()
+        asyncio.run(stop_inner())

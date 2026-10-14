@@ -1,18 +1,18 @@
-import asyncio
-
 from LocalCloud import Server
-Server.init()
-async def main():
-    #Чтобы другие устройства в локальной сети могли делать запросы на ваш Клиент
-    #вам нужно добавить их в белый список (white_list)
+Server.init() #инициализация сервера
+#менеджеры при инициализации сами запускают сервер если он не был запущен ранее
 
-    # добавляет адрес в белый список
-    Server.add_address_to_whitelist("<локальный адресс устройства>")
+#Server.white_list - белый список запросы приходящие от адресов которых нету в этом списке будут АВТОМАТИЧЕСКИ ОТКЛОНЕНЫ
+print(Server.white_list) #Вывод {'localhost', '<ip адрес вашего устройства>', '127.0.0.1'} (последовательность может быть другой)
 
-    #удаляет адрес из белого списка True-если адрес был и удален, False - адреса не было.
-    Server.remove_address_from_whitelist("<локальный адресс устройства>")
+#удаление и добавление в whitelist
+Server.remove_address_from_whitelist("localhost")
+Server.add_address_to_whitelist("localhost")
 
-    white_list=Server.white_list #сам белый список, тип даннных set()
-asyncio.run(main())
+fast_api_original_object = Server.fast_api_server #FastApi объект который создал сервер
 
+uvicorn_server_object = Server.server_instance #Uvicorn Server объект который запустил FastApi
 
+my_host=Server.current_host #хост (адрес) на котором работает LocalCloud
+
+my_port=Server.current_port #порт на котором работает LocalCloud

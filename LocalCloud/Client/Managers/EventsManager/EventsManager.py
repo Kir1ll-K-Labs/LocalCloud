@@ -1,7 +1,7 @@
 from LocalCloud.CallBackFilter import CallBackClass
 from LocalCloud.Client.Managers.EventsManager.SenderClient import SenderClient
-from LocalCloud.Client.Managers.EventsManager.Types import SendingEvent
 from LocalCloud.Client.Server import Server
+from LocalCloud.CallBackFilter.Handlers import Handlers
 class EventsManager:
 
     class __event_class():
@@ -14,10 +14,7 @@ class EventsManager:
 
         async def send_to_addresses(self,addresses,*args,**kwargs):
             await EventsManager.send_event(
-                SendingEvent(
-                    addresses=addresses,
-                    event_name=self.event_name
-                ),*args,**kwargs
+                addresses=addresses,*args,**kwargs
             )
         def __getattr__(self, item):
             return self.function.__getattr__(item)
@@ -29,6 +26,9 @@ class EventsManager:
         Server.init()
         Server._start_server()
 
+    @classmethod
+    def get_handlers(cls)->Handlers:
+        return Handlers(handlers_list=Server._on_event_receive_callbacks)
     @classmethod
     def echo_event(cls,**kwargs):
         def decorator(function):
@@ -43,10 +43,9 @@ class EventsManager:
         return decorator
 
     @classmethod
-    async def send_event(cls,sending_event:SendingEvent,*args,**kwargs):
+    async def send_event(cls,_addresses_,*args,**kwargs):
         event_data={
             "args":args,
             "kwargs":kwargs
         }
-        sending_event.event_data=event_data
-        await SenderClient.send_event_class(sending_event)
+        await SenderClient.send_event(_addresses_,event_data)
