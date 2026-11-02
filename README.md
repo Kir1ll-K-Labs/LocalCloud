@@ -10,8 +10,8 @@
 | Менеджер | Описание | Пример кода |
 | :--- | :--- | :---: |
 | 📁 **FileManager** | Передача одиночных файлов и целых папок с сохранением структуры | [FileManager.py](examples/Managers/FileManager/FileManagerExample.py) |
-| 🔔 **EventsManager** | Генерация и обработка пользовательских событий в локальной сети | [EventsManager.py](examples/Managers/EventsManager/EventsManagersExample.py) |
-| ⚡ **FunctionsManager** | Удаленный вызов функций (RPC) с фильтрацией и возвратом ответа | [FunctionsManager.py](examples/Managers/FunctionsManager/FunctionManagerExample.py) |
+| 🔔 **EventsManager** | Генерация и обработка пользовательских событий в локальной сети | [EventsManager.py](examples/Managers/EventsManager/EventsManagerExample.py) |
+| ⚡ **FunctionsManager** | Удаленный вызов функций (RPC) с фильтрацией и возвратом ответа | [FunctionsManager.py](examples/Managers/FunctionsManager/FunctionsManagerExample.py) |
 | 📦 **VariablesManager** | Распределенное синхронное/асинхронное состояние переменных | [VariablesManager.py](examples/Managers/VariablesManager/VariablesManagerExample.py) |
 
 ---
